@@ -6,14 +6,14 @@ const fs = require('fs');
 const play = require('play-dl');
 const config = require('./config.json');
 
-function callDeepSeek(msgs, sys) {
+function callAI(msgs, sys) {
   return new Promise(r => {
-    if (!config.deepseekKey) return r(null);
-    const d = JSON.stringify({ model: "deepseek-chat", messages: [{ role: "system", content: sys || "" }, ...msgs], max_tokens: 200, temperature: 0.8 });
-    const req = https.request({ hostname: "api.deepseek.com", path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + config.deepseekKey } }, res => {
-      let b = ""; res.on("data", c => b += c); res.on("end", () => { try { r(JSON.parse(b).choices?.[0]?.message?.content); } catch { r(null); } });
+    if (!config.aiKey) return r(null);
+    const d = JSON.stringify({ model: "moonshot-v1-8k", messages: [{ role: "system", content: sys || "" }, ...msgs], max_tokens: 250, temperature: 0.7 });
+    const req = https.request({ hostname: "api.moonshot.ai", path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + config.aiKey } }, res => {
+      let b = ""; res.on("data", c => b += c); res.on("end", () => { try { const j = JSON.parse(b); r(j.choices?.[0]?.message?.content || null); } catch { r(null); } });
     });
-    req.on("error", () => r(null)); req.setTimeout(10000, () => { req.destroy(); r(null); }); req.write(d); req.end();
+    req.on("error", () => r(null)); req.setTimeout(12000, () => { req.destroy(); r(null); }); req.write(d); req.end();
   });
 }
 
@@ -92,13 +92,31 @@ async function respondOraculo(msg) {
   const txt = msg.content.trim(); if (txt.length > 500 || txt.length < 3 || msg.author.id === client.user.id) return;
   const l = cds.get(msg.author.id); if (l && Date.now()-l<3000) { try { await msg.react('⏳'); } catch {} return; }
   cds.set(msg.author.id, Date.now()); await new Promise(r => setTimeout(r, 1500+Math.random()*1500));
-  if (config.deepseekKey) {
+  if (config.aiKey) {
     recMem(msg.author.id, msg.author.username, txt); const ctx = memCtx(msg.author.id, msg.author.username);
-    const ai = await callDeepSeek([...(convBuf.get(msg.author.id)||[]), {role:"user",content:txt}], "Eres Cerberus. 1) 1-2 oraciones 2) NO markdown 3) NO consejos 4) Slang mexicano 5) NO digas que eres IA"+ctx);
+    const ai = await callAI([...(convBuf.get(msg.author.id)||[]), {role:"user",content:txt}], "Eres Cerberus, un miembro del server Sociedad de los Mediocres en Discord. Reglas: 1) Respuestas casuales de 1-2 oraciones 2) Sin markdown 3) No des consejos médicos 4) No digas que eres IA 5) Sé natural y variado en tu forma de hablar 6) Si alguien necesita ayuda, orienta sin ser intenso 7) Puedes participar en conversaciones variadas sin forzar el tema"+ctx);
     if (ai) { convBuf.set(msg.author.id, [...(convBuf.get(msg.author.id)||[]).slice(-4),{role:"user",content:txt},{role:"assistant",content:ai}]); try { await msg.react(['🔥','💀','🚬','🤝'][Math.floor(Math.random()*4)]); } catch {} await msg.channel.send({content:ai.trim().substring(0,200),tts:true}); return; }
   }
   try { await msg.react(['🔥','💀','🚬','🤝'][Math.floor(Math.random()*4)]); } catch {} await msg.channel.send({content:respuestas[Math.floor(Math.random()*respuestas.length)],tts:true});
 }
+
+// Si mencionan a Cerberus en #general, responder
+const mentionRegex = new RegExp("<@!?" + client.user.id + ">", "i");
+
+client.on("messageCreate", async (msg) => {
+  if (msg.author.bot) return;
+  const inOraculo = oraculoConfig.get(msg.guild?.id);
+  if (inOraculo && msg.channel.id === inOraculo) return; // ya lo maneja abajo
+  if (mentionRegex.test(msg.content) && msg.channel.name.includes("general")) {
+    const txt = msg.content.replace(mentionRegex, "").trim();
+    if (!txt) return;
+    recMem(msg.author.id, msg.author.username, txt);
+    const ctx = memCtx(msg.author.id, msg.author.username);
+    const ai = await callAI([...((convBuf.get(msg.author.id)||[]).slice(-4)),{role:"user",content:txt}], "Eres Cerberus, miembro del server Discord. Respondes natural, casual, como un amigo. 1-2 oraciones. Sin markdown. Sin decir que eres IA o bot."+ctx);
+    if (ai) { convBuf.set(msg.author.id, [...(convBuf.get(msg.author.id)||[]).slice(-4),{role:"user",content:txt},{role:"assistant",content:ai}]); await msg.reply(ai.trim().substring(0,300)); }
+    return;
+  }
+});
 
 const galCfg = new Map();
 async function getCatGal(g) {
@@ -147,7 +165,14 @@ client.on('messageCreate', async msg => {
 });
 
 client.on('interactionCreate', async i => {
-  if (!i.isChatInputCommand()) return;
+  if (!i.isChatInputCommand()) {
+    if (i.isStringSelectMenu() && i.customId==="p_s") {
+      const g=i.guild,m=i.member,sel=i.values[0]; let r=g.roles.cache.find(x=>x.name===sel); if(!r) r=await g.roles.create({name:sel});
+      for(const p of paises){const old=g.roles.cache.find(x=>x.name===p.n);if(old&&m.roles.cache.has(old.id)) await m.roles.remove(old.id);}
+      await m.roles.add(r.id); await i.update({content:`✅ **${sel}**`,components:[]});
+    }
+    return;
+  }
   switch (i.commandName) {
     case 'play': await handlePlay(i, i.options.getString('query')); break;
     case 'skip': { const q = getQ(i.guild); if (!q.songs.length) return i.reply('❌'); q.player.stop(); i.reply('⏭️'); break; }
