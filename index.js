@@ -1,10 +1,9 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { execSync } = require('child_process');
 const config = require('./config.json');
-const { loadMem } = require('./memory.js');
 const { handlePlay, handleCmd } = require('./music.js');
 const { callAI } = require('./ai.js');
-const { recMem, memCtx, addConv, getConv } = require('./memory.js');
+const { loadMem } = require('./memory.js');
 const {
   fetchDeals, sendDeals, er,
   oraculoConfig, respondOraculo,
@@ -15,9 +14,8 @@ const {
 } = require('./features.js');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildPresences, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildVoiceStates] });
-const channelMem = {};
 
-// === MENSAJES ===
+// === MENSAJES (solo owner) ===
 client.on('messageCreate', async msg => {
   if (msg.author.bot) return;
 
@@ -29,44 +27,15 @@ client.on('messageCreate', async msg => {
   const gc = require('./features.js').galCfg.get(msg.guild?.id);
   if (gc) { const cat = msg.guild?.channels.cache.get(gc.id); if (cat && msg.channel.parentId === cat.id && msg.channel.id !== gc.dest && (msg.attachments.size > 0 || msg.content.length > 0)) { setTimeout(async () => { for (const e of ["🎨","✨","🔥","💀","🧠","🤝","❤️"]) { try { await msg.react(e); } catch {} } }, 500); } }
 
-  // Participación orgánica en #general (sin @)
-  if (client.user && msg.channel.name.includes("general")) {
-    const txt = msg.content.trim();
-    if (!txt || txt.length < 5) return;
+  // Solo el owner puede dar órdenes por chat
+  if (msg.author.id !== config.ownerId) return;
 
-    // @mención explícita - responder siempre
-    const isMention = new RegExp("<@!?" + client.user.id + ">", "i").test(msg.content);
+  const txt = msg.content.trim();
+  if (!txt || txt.length < 2) return;
 
-    // Pregunta sin mención - 30% de probabilidad
-    const isQuestion = /[¿?]|qué|como|cómo|quien|quién|donde|dónde|cuando|cuándo|por qué|porque|pq|xq|saben|alguien|opinan/i.test(txt);
-
-    // Conversación activa (2+ mensajes seguidos de distintos usuarios) - 10%
-    const lastMsgs = msg.channel.messages?.cache?.filter(m => !m.author.bot).sort((a,b) => b.createdAt - a.createdAt);
-    const activeChat = lastMsgs?.size >= 3 && new Set(lastMsgs?.map(m => m.author.id).slice(0,5)).size >= 2;
-
-    const shouldRespond = isMention || (isQuestion && Math.random() < 0.3) || (activeChat && Math.random() < 0.08);
-
-    if (!shouldRespond) return;
-
-    const texto = isMention ? msg.content.replace(new RegExp("<@!?" + client.user.id + ">", "i"), "").trim() : txt;
-    if (!texto) return;
-
-    // Channel buffer - ultimos mensajes del canal
-    if (!channelMem[msg.channel.id]) channelMem[msg.channel.id] = [];
-    channelMem[msg.channel.id].push({ user: msg.author.username, text: texto });
-    if (channelMem[msg.channel.id].length > 15) channelMem[msg.channel.id].splice(0, channelMem[msg.channel.id].length - 15);
-
-    recMem(msg.author.id, msg.author.username, texto);
-    const ctx = memCtx(msg.author.id, msg.author.username);
-    const conv = getConv(msg.author.id);
-
-    // Construir contexto del canal
-    const channelCtx = channelMem[msg.channel.id]?.map(m => "[" + m.user + "]: " + m.text).join("\n") || "";
-    const prompt = "Eres Cerberus, un user mas del server. ERES UN HDP SARCÁSTICO como Dr. House. Tus respuestas son filosa, cínicas, siempre con un toque de superioridad. REGLAS: 1) Respondes como si fueras mejor que los demas 2) Nadie te gusta, cuestionas todo 3) 1 oracion, corta y cortante 4) Sin markdown 5) Jamas seas amable 6) Usa las herramientas del server si preguntan datos reales."+ctx+"\n\nContexto del canal (lo que se habla):\n" + channelCtx;
-    const ai = await callAI([...conv.slice(-4), {role:"user",content:texto}], prompt, client, msg.guild.id);
-    if (ai) { addConv(msg.author.id, "user", texto); addConv(msg.author.id, "assistant", ai); await msg.reply(ai.trim().substring(0,300)); }
-    return;
-  }
+  const prompt = "Eres Cerberus, un asistente de administración para Discord. Ejecutas órdenes del dueño del server. Eres eficiente, directo y conciso. Usa las herramientas disponibles para administrar el servidor cuando sea necesario. Responde en español.";
+  const ai = await callAI([{ role: "user", content: txt }], prompt, client, msg.guild?.id || config.guildId);
+  if (ai) await msg.reply(ai.trim().substring(0, 500));
 });
 
 // === INTERACCIONES ===
