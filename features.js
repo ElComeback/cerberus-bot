@@ -86,12 +86,72 @@ function loadDeals() { try{const d=JSON.parse(fs.readFileSync("./deals.json","ut
 function startDeals(gid,cid,cl) { stopDeals(gid); if(!dealsConfig.get(gid)) return; dealsConfig.get(gid).int=setInterval(async ()=>{const g=cl.guilds.cache.get(gid);const c=g?.channels?.cache?.get(cid);if(c){const d=await fetchDeals();sendDeals(c,d);}},8*60*60*1000); }
 function stopDeals(gid) { const c=dealsConfig.get(gid); if(c?.int){clearInterval(c.int);c.int=null;} }
 async function postDeals(gid,c,cl) { try{sendDeals(c,await fetchDeals());}catch{} }
+// === RITUALES SEMANALES ===
+const ritualCfg = new Map();
+function saveRitual() { const d={}; for(const [k,v] of ritualCfg) d[k]={ch:v.ch,last:v.last||{}}; fs.writeFile('./ritual.json',JSON.stringify(d),()=>{}); }
+function loadRitual() { try{const d=JSON.parse(fs.readFileSync('./ritual.json','utf8'));for(const [k,v] of Object.entries(d)) ritualCfg.set(k,{ch:v.ch,int:null,last:v.last||{}});console.log("📂 "+Object.keys(d).length+" rituales");}catch{} }
+
+const ritualDays = {
+  1: { msg: "¿Qué hicieron este finde?", emoji: "☕" },    // Monday
+  3: { msg: null, emoji: null },                           // Wednesday -> deals
+  5: { msg: "¿Qué van a jugar o hacer este fin?", emoji: "🎮" }, // Friday
+};
+
+async function checkRitual(gid, client) {
+  const cfg = ritualCfg.get(gid);
+  if (!cfg) return;
+  const now = new Date();
+  const today = now.getDay(); // 0=Sun, 1=Mon...
+  const todayStr = now.toISOString().slice(0, 10);
+
+  // Monday ritual
+  if (today === 1 && ritualDays[1].msg && cfg.last?.mon !== todayStr) {
+    const ch = client.guilds.cache.get(gid)?.channels?.cache?.get(cfg.ch);
+    if (ch) {
+      const t = await ch.threads.create({ name: "☕ ¿Qué hicieron este finde?", message: { content: "¿Qué hicieron este fin de semana? Cuenten, vean, jugaron, durmieron... todo vale." }, autoArchiveDuration: 1440 });
+      cfg.last = cfg.last || {}; cfg.last.mon = todayStr; saveRitual();
+    }
+  }
+
+  // Wednesday -> trigger deals
+  if (today === 3 && cfg.last?.wed !== todayStr) {
+    const dc = dealsConfig.get(gid);
+    if (dc) {
+      const g = client.guilds.cache.get(gid);
+      const c = g?.channels?.cache?.get(dc.ch);
+      if (c) { sendDeals(c, await fetchDeals()); cfg.last = cfg.last || {}; cfg.last.wed = todayStr; saveRitual(); }
+    }
+  }
+
+  // Friday ritual
+  if (today === 5 && ritualDays[5].msg && cfg.last?.fri !== todayStr) {
+    const ch = client.guilds.cache.get(gid)?.channels?.cache?.get(cfg.ch);
+    if (ch) {
+      const t = await ch.threads.create({ name: "🎮 ¿Qué van a jugar este fin?", message: { content: "¿Qué van a jugar, ver o hacer este fin de semana? Pasen el dato." }, autoArchiveDuration: 1440 });
+      cfg.last = cfg.last || {}; cfg.last.fri = todayStr; saveRitual();
+    }
+  }
+}
+
+function startRituals(gid, client) {
+  const c = ritualCfg.get(gid);
+  if (!c) return;
+  if (c.int) clearInterval(c.int);
+  checkRitual(gid, client);
+  c.int = setInterval(() => checkRitual(gid, client), 60 * 60 * 1000);
+}
+
+function stopRituals(gid) {
+  const c = ritualCfg.get(gid);
+  if (c?.int) { clearInterval(c.int); c.int = null; }
+}
+
 module.exports = {
   fetchDeals, sendDeals, er, dealsConfig, saveDeals, loadDeals, startDeals, stopDeals, postDeals,
-  fetchDeals, sendDeals, er,
   oraculoConfig, respondOraculo, respuestas, cds,
   paises, handlePais, handlePaisSelect,
   galCfg, getCatGal, handleArt,
   welcomeConfig, saveWel, loadWel,
   encCfg, saveEnc, loadEnc, updateEnc, startEnc,
+  ritualCfg, saveRitual, loadRitual, startRituals, stopRituals,
 };

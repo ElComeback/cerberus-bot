@@ -12,6 +12,7 @@ const {
   getCatGal, handleArt,
   welcomeConfig, saveWel, loadWel,
   encCfg, saveEnc, loadEnc, updateEnc, startEnc,
+  ritualCfg, saveRitual, loadRitual, startRituals, stopRituals,
 } = require('./features.js');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildPresences, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildVoiceStates] });
@@ -78,7 +79,7 @@ client.on('interactionCreate', async i => {
   switch (i.commandName) {
     case 'play': await handlePlay(i, i.options.getString('query')); break;
     case 'skip': case 'stop': case 'pause': case 'resume': case 'queue': case 'np': case 'volume': handleCmd(i, i.commandName, [i.options.getInteger('nivel')]); break;
-    case 'help': i.reply('/play /skip /stop /pause /resume /queue /np /volume /deals /setdeals /stopdeals /pais /artista /setupgaleria /setwelcome /stopwelcome /setoraculo /stoporaculo /setmuro /stopmuro /setenciclopedia /stopenciclopedia /updateenciclopedia /motw /setmotw /stopmotw'); break;
+    case 'help': i.reply('/play /skip /stop /pause /resume /queue /np /volume /deals /setdeals /stopdeals /pais /artista /setupgaleria /setritual /stopritual /setwelcome /stopwelcome /setoraculo /stoporaculo /setmuro /stopmuro /setenciclopedia /stopenciclopedia /updateenciclopedia /motw /setmotw /stopmotw'); break;
     case 'deals': await i.deferReply(); try { const d = await fetchDeals(); i.editReply({ embeds: d.map(x => new EmbedBuilder().setColor(0x00ff00).setTitle(x.t).setURL(x.l).setThumbnail(x.th||null).addFields({name:'💵',value:`~~${x.n}~~→**${x.s}**`,inline:true},{name:'🔥',value:`${x.p}%`,inline:true},{name:'⭐',value:`${x.r}%`,inline:true}).setFooter({text:'Cerberus'}).setTimestamp()) }); } catch(e) { i.editReply('❌ '+e.message); } break;
     case 'setdeals': { const ch=i.options.getChannel('canal'); require('./features.js').dealsConfig.set(i.guildId,{ch:ch.id}); require('./features.js').saveDeals(); require('./features.js').startDeals(i.guildId,ch.id); i.reply(`✅ Deals en ${ch}`); await require('./features.js').postDeals(i.guildId,ch,client); break; }
     case 'stopdeals': { require('./features.js').stopDeals(i.guildId); require('./features.js').dealsConfig.delete(i.guildId); require('./features.js').saveDeals(); i.reply('⏹️'); break; }
@@ -94,6 +95,8 @@ client.on('interactionCreate', async i => {
     case 'artista': await handleArt(i); break;
     case 'setupgaleria': await getCatGal(i.guild); i.reply('🎨'); break;
     case 'pais': await handlePais(i); break;
+    case 'setritual': { const ch=i.options.getChannel('canal'); if(ch.type!==0)return i.reply('❌'); ritualCfg.set(i.guildId,{ch:ch.id}); saveRitual(); startRituals(i.guildId,client); i.reply(`📅 Rituales en ${ch}`); break; }
+    case 'stopritual': { stopRituals(i.guildId); ritualCfg.delete(i.guildId); saveRitual(); i.reply('⏹️'); break; }
     case 'motw': {
       i.reply('🏆 Dame un segundo...').then(async () => {
         const g=i.guild; const gen=g.channels.cache.find(c=>c.name.includes("general"));
@@ -119,15 +122,16 @@ client.on('guildMemberAdd', async m => {
   const id = welcomeConfig.get(m.guild.id); if (!id) return;
   const ch = m.guild.channels.cache.get(id); if (!ch) return;
   await ch.send(["🔥 Llegó "+m+"!","🫡 "+m+" bienvenido.",m+" se unió."][Math.floor(Math.random()*3)]);
-  try { await m.send("🤝 Bienvenido a **"+m.guild.name+"**! Pásate por #🎭-roles."); } catch {}
+  try { await m.send("🤝 Bienvenido a la **Sociedad de los Mediocres**! Pásate por #🎭-roles a poner tu país, y si quieres dibujar usa /artista. Esto es relax, no hay presión."); } catch {}
 });
 
 // === READY ===
 client.on('ready', () => {
   console.log(`✅ Cerberus online como ${client.user.tag}`);
   try { console.log(`✅ yt-dlp: ${execSync('yt-dlp --version').toString().trim()}`); } catch {}
-  loadMem(); loadWel(); loadEnc();
+  loadMem(); loadWel(); loadEnc(); loadRitual();
   for (const [k] of encCfg) startEnc(k, client);
+  for (const [k] of ritualCfg) startRituals(k, client);
   // MOTW automático los domingos
   const runMOTW = async () => {
     for (const g of client.guilds.cache.values()) {
