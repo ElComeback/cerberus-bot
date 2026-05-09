@@ -1,9 +1,10 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { execSync } = require('child_process');
 const config = require('./config.json');
-const { handlePlay, handleCmd } = require('./music.js');
 const { loadMem } = require('./memory.js');
-const admin = require('./admin.js');
+const { handlePlay, handleCmd } = require('./music.js');
+const { callAI } = require('./ai.js');
+const { recMem, memCtx, addConv, getConv } = require('./memory.js');
 const {
   fetchDeals, sendDeals, er,
   oraculoConfig, respondOraculo,
@@ -14,8 +15,9 @@ const {
 } = require('./features.js');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildPresences, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildVoiceStates] });
+const channelMem = {};
 
-// === MENSAJES (solo owner) ===
+// === MENSAJES ===
 client.on('messageCreate', async msg => {
   if (msg.author.bot) return;
 
@@ -27,104 +29,43 @@ client.on('messageCreate', async msg => {
   const gc = require('./features.js').galCfg.get(msg.guild?.id);
   if (gc) { const cat = msg.guild?.channels.cache.get(gc.id); if (cat && msg.channel.parentId === cat.id && msg.channel.id !== gc.dest && (msg.attachments.size > 0 || msg.content.length > 0)) { setTimeout(async () => { for (const e of ["🎨","✨","🔥","💀","🧠","🤝","❤️"]) { try { await msg.react(e); } catch {} } }, 500); } }
 
-  // Solo el owner puede dar órdenes
-  if (msg.author.id !== config.ownerId) return;
+  // Participación orgánica en #general (sin @)
+  if (client.user && msg.channel.name.includes("general")) {
+    const txt = msg.content.trim();
+    if (!txt || txt.length < 5) return;
 
-  const txt = msg.content.trim();
-  if (!txt || txt.length < 2) return;
+    // @mención explícita - responder siempre
+    const isMention = new RegExp("<@!?" + client.user.id + ">", "i").test(msg.content);
 
-  const g = msg.guild;
-  if (!g) return;
+    // Pregunta sin mención - 30% de probabilidad
+    const isQuestion = /[¿?]|qué|como|cómo|quien|quién|donde|dónde|cuando|cuándo|por qué|porque|pq|xq|saben|alguien|opinan/i.test(txt);
 
-  // ===== COMANDOS DE ADMIN =====
-  try {
-    // Crear canal: "crea un canal texto llamado memes en general"
-    let m = txt.match(/crea?(?: un)? canal(?:\s+texto|\s+voz)?\s+(?:llamado|llamada|para|con nombre|)\s*[#]?(.+?)(?:\s+en\s+(.+))?$/i);
-    if (m) {
-      const name = m[1].trim().toLowerCase().replace(/\s+/g, '-');
-      const type = txt.includes("voz") ? "voice" : "text";
-      const cat = m[2]?.trim();
-      const r = await admin.createChannel(g, name, type, cat);
-      return msg.reply(r.success ? `✅ Canal ${r.name} creado` : `❌ ${r.error}`);
-    }
+    // Conversación activa (2+ mensajes seguidos de distintos usuarios) - 10%
+    const lastMsgs = msg.channel.messages?.cache?.filter(m => !m.author.bot).sort((a,b) => b.createdAt - a.createdAt);
+    const activeChat = lastMsgs?.size >= 3 && new Set(lastMsgs?.map(m => m.author.id).slice(0,5)).size >= 2;
 
-    // Eliminar canal: "elimina canal #nombre" / "borra el canal nombre"
-    m = txt.match(/(?:elimina|borra|quita)\s+(?:el\s+)?(?:canal\s+)?[#]?(.+)/i);
-    if (m) {
-      const name = m[1].trim();
-      const r = await admin.deleteChannel(g, name);
-      return msg.reply(r.success ? `✅ Canal eliminado` : `❌ ${r.error}`);
-    }
+    const shouldRespond = isMention || (isQuestion && Math.random() < 0.3) || (activeChat && Math.random() < 0.08);
 
-    // Asignar rol: "asigna rol Admin a user" / "pon rol Admin a user"
-    m = txt.match(/(?:asigna|pon|da)\s+(?:rol\s+)?(.+?)\s+(?:a\s+)(.+)/i);
-    if (m) {
-      const roleName = m[1].trim();
-      const username = m[2].trim();
-      const r = await admin.assignRole(g, username, roleName);
-      return msg.reply(r.success ? `✅ Rol **${r.role}** asignado a ${r.user}` : `❌ ${r.error}`);
-    }
+    if (!shouldRespond) return;
 
-    // Quitar rol: "quita rol Admin a user" / "saca rol Admin de user"
-    m = txt.match(/(?:quita|saca|remueve)\s+(?:rol\s+)?(.+?)\s+(?:a\s+|de\s+)(.+)/i);
-    if (m) {
-      const roleName = m[1].trim();
-      const username = m[2].trim();
-      const r = await admin.removeRole(g, username, roleName);
-      return msg.reply(r.success ? `✅ Rol **${r.role}** quitado de ${r.user}` : `❌ ${r.error}`);
-    }
+    const texto = isMention ? msg.content.replace(new RegExp("<@!?" + client.user.id + ">", "i"), "").trim() : txt;
+    if (!texto) return;
 
-    // Crear rol: "crea rol Admin #FF0000"
-    m = txt.match(/crea?(?:\s+un)?\s+rol\s+(.+?)(?:\s+(#[A-Fa-f0-9]{6}))?\s*$/i);
-    if (m) {
-      const name = m[1].trim();
-      const color = m[2] || null;
-      const r = await admin.createRole(g, name, color);
-      return msg.reply(r.success ? `✅ Rol **${r.name}** creado` : `❌ ${r.error}`);
-    }
+    // Channel buffer - ultimos mensajes del canal
+    if (!channelMem[msg.channel.id]) channelMem[msg.channel.id] = [];
+    channelMem[msg.channel.id].push({ user: msg.author.username, text: texto });
+    if (channelMem[msg.channel.id].length > 15) channelMem[msg.channel.id].splice(0, channelMem[msg.channel.id].length - 15);
 
-    // Eliminar rol: "elimina rol Admin"
-    m = txt.match(/(?:elimina|borra|quita)\s+(?:el\s+)?(?:rol\s+)?(.+)/i);
-    if (m) {
-      const name = m[1].trim();
-      const r = await admin.deleteRole(g, name);
-      return msg.reply(r.success ? `✅ Rol eliminado` : `❌ ${r.error}`);
-    }
+    recMem(msg.author.id, msg.author.username, texto);
+    const ctx = memCtx(msg.author.id, msg.author.username);
+    const conv = getConv(msg.author.id);
 
-    // Decir en canal: "di hola en #general" / "manda mensaje a #general diciendo hola"
-    m = txt.match(/(?:di|dile|diles?|manda|envía)\s+(.+?)\s+(?:en\s+|a\s+|en\s+el\s+canal\s+)[#]?(.+)/i);
-    if (m) {
-      const message = m[1].trim();
-      const chName = m[2].trim();
-      const ch = g.channels.cache.find(c => c.name.includes(chName));
-      if (!ch) return msg.reply("❌ Canal no encontrado");
-      await ch.send(message);
-      return msg.reply("✅ Mensaje enviado");
-    }
-
-    // Quién está online
-    if (/online|conectados|en línea/i.test(txt) && /qui[ée]n|cu[aá]ntos|lista/i.test(txt)) {
-      const r = await admin.getOnline(g);
-      if (r.count === 0) return msg.reply("🦗 Nadie online.");
-      return msg.reply(`🟢 **${r.count}** online: ${r.users.join(", ")}`);
-    }
-
-    // Info de usuario
-    m = txt.match(/(?:info|datos|qu[eé]n es)\s+(.+)/i);
-    if (m) {
-      const username = m[1].trim();
-      const r = await admin.getUser(g, username);
-      if (r.error) return msg.reply(`❌ ${r.error}`);
-      return msg.reply(`👤 **${r.username}** (${r.displayName})\n📅 ${r.joined?.slice(0,10) || "?"}\n🎭 ${r.roles.join(", ") || "sin roles"}`);
-    }
-
-    // Estadísticas
-    if (/stats|estad[ií]sticas|miembros/i.test(txt) && !/info|datos|online/i.test(txt)) {
-      const r = await admin.getStats(g);
-      return msg.reply(`📊 **${g.name}**\n👥 Total: ${r.total}\n🧑 Humanos: ${r.humans}\n🤖 Bots: ${r.bots}\n🟢 Online: ${r.online}`);
-    }
-  } catch (e) {
-    msg.reply(`❌ Error: ${e.message}`);
+    // Construir contexto del canal
+    const channelCtx = channelMem[msg.channel.id]?.map(m => "[" + m.user + "]: " + m.text).join("\n") || "";
+    const prompt = "Eres Cerberus, un user mas del server. ERES UN HDP SARCÁSTICO como Dr. House. Tus respuestas son filosa, cínicas, siempre con un toque de superioridad. REGLAS: 1) Respondes como si fueras mejor que los demas 2) Nadie te gusta, cuestionas todo 3) 1 oracion, corta y cortante 4) Sin markdown 5) Jamas seas amable 6) Usa las herramientas del server si preguntan datos reales."+ctx+"\n\nContexto del canal (lo que se habla):\n" + channelCtx;
+    const ai = await callAI([...conv.slice(-4), {role:"user",content:texto}], prompt, client, msg.guild.id);
+    if (ai) { addConv(msg.author.id, "user", texto); addConv(msg.author.id, "assistant", ai); await msg.reply(ai.trim().substring(0,300)); }
+    return;
   }
 });
 
