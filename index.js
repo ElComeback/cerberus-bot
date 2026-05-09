@@ -2,8 +2,8 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { execSync } = require('child_process');
 const config = require('./config.json');
 const { handlePlay, handleCmd } = require('./music.js');
-const { callAI } = require('./ai.js');
 const { loadMem } = require('./memory.js');
+const admin = require('./admin.js');
 const {
   fetchDeals, sendDeals, er,
   oraculoConfig, respondOraculo,
@@ -27,15 +27,105 @@ client.on('messageCreate', async msg => {
   const gc = require('./features.js').galCfg.get(msg.guild?.id);
   if (gc) { const cat = msg.guild?.channels.cache.get(gc.id); if (cat && msg.channel.parentId === cat.id && msg.channel.id !== gc.dest && (msg.attachments.size > 0 || msg.content.length > 0)) { setTimeout(async () => { for (const e of ["🎨","✨","🔥","💀","🧠","🤝","❤️"]) { try { await msg.react(e); } catch {} } }, 500); } }
 
-  // Solo el owner puede dar órdenes por chat
+  // Solo el owner puede dar órdenes
   if (msg.author.id !== config.ownerId) return;
 
   const txt = msg.content.trim();
   if (!txt || txt.length < 2) return;
 
-  const prompt = "Eres Cerberus, un asistente de administración para Discord. Ejecutas órdenes del dueño del server. Eres eficiente, directo y conciso. Usa las herramientas disponibles para administrar el servidor cuando sea necesario. Responde en español.";
-  const ai = await callAI([{ role: "user", content: txt }], prompt, client, msg.guild?.id || config.guildId);
-  if (ai) await msg.reply(ai.trim().substring(0, 500));
+  const g = msg.guild;
+  if (!g) return;
+
+  // ===== COMANDOS DE ADMIN =====
+  try {
+    // Crear canal: "crea un canal texto llamado memes en general"
+    let m = txt.match(/crea?(?: un)? canal(?:\s+texto|\s+voz)?\s+(?:llamado|llamada|para|con nombre|)\s*[#]?(.+?)(?:\s+en\s+(.+))?$/i);
+    if (m) {
+      const name = m[1].trim().toLowerCase().replace(/\s+/g, '-');
+      const type = txt.includes("voz") ? "voice" : "text";
+      const cat = m[2]?.trim();
+      const r = await admin.createChannel(g, name, type, cat);
+      return msg.reply(r.success ? `✅ Canal ${r.name} creado` : `❌ ${r.error}`);
+    }
+
+    // Eliminar canal: "elimina canal #nombre" / "borra el canal nombre"
+    m = txt.match(/(?:elimina|borra|quita)\s+(?:el\s+)?(?:canal\s+)?[#]?(.+)/i);
+    if (m) {
+      const name = m[1].trim();
+      const r = await admin.deleteChannel(g, name);
+      return msg.reply(r.success ? `✅ Canal eliminado` : `❌ ${r.error}`);
+    }
+
+    // Asignar rol: "asigna rol Admin a user" / "pon rol Admin a user"
+    m = txt.match(/(?:asigna|pon|da)\s+(?:rol\s+)?(.+?)\s+(?:a\s+)(.+)/i);
+    if (m) {
+      const roleName = m[1].trim();
+      const username = m[2].trim();
+      const r = await admin.assignRole(g, username, roleName);
+      return msg.reply(r.success ? `✅ Rol **${r.role}** asignado a ${r.user}` : `❌ ${r.error}`);
+    }
+
+    // Quitar rol: "quita rol Admin a user" / "saca rol Admin de user"
+    m = txt.match(/(?:quita|saca|remueve)\s+(?:rol\s+)?(.+?)\s+(?:a\s+|de\s+)(.+)/i);
+    if (m) {
+      const roleName = m[1].trim();
+      const username = m[2].trim();
+      const r = await admin.removeRole(g, username, roleName);
+      return msg.reply(r.success ? `✅ Rol **${r.role}** quitado de ${r.user}` : `❌ ${r.error}`);
+    }
+
+    // Crear rol: "crea rol Admin #FF0000"
+    m = txt.match(/crea?(?:\s+un)?\s+rol\s+(.+?)(?:\s+(#[A-Fa-f0-9]{6}))?\s*$/i);
+    if (m) {
+      const name = m[1].trim();
+      const color = m[2] || null;
+      const r = await admin.createRole(g, name, color);
+      return msg.reply(r.success ? `✅ Rol **${r.name}** creado` : `❌ ${r.error}`);
+    }
+
+    // Eliminar rol: "elimina rol Admin"
+    m = txt.match(/(?:elimina|borra|quita)\s+(?:el\s+)?(?:rol\s+)?(.+)/i);
+    if (m) {
+      const name = m[1].trim();
+      const r = await admin.deleteRole(g, name);
+      return msg.reply(r.success ? `✅ Rol eliminado` : `❌ ${r.error}`);
+    }
+
+    // Decir en canal: "di hola en #general" / "manda mensaje a #general diciendo hola"
+    m = txt.match(/(?:di|dile|diles?|manda|envía)\s+(.+?)\s+(?:en\s+|a\s+|en\s+el\s+canal\s+)[#]?(.+)/i);
+    if (m) {
+      const message = m[1].trim();
+      const chName = m[2].trim();
+      const ch = g.channels.cache.find(c => c.name.includes(chName));
+      if (!ch) return msg.reply("❌ Canal no encontrado");
+      await ch.send(message);
+      return msg.reply("✅ Mensaje enviado");
+    }
+
+    // Quién está online
+    if (/online|conectados|en línea/i.test(txt) && /qui[ée]n|cu[aá]ntos|lista/i.test(txt)) {
+      const r = await admin.getOnline(g);
+      if (r.count === 0) return msg.reply("🦗 Nadie online.");
+      return msg.reply(`🟢 **${r.count}** online: ${r.users.join(", ")}`);
+    }
+
+    // Info de usuario
+    m = txt.match(/(?:info|datos|qu[eé]n es)\s+(.+)/i);
+    if (m) {
+      const username = m[1].trim();
+      const r = await admin.getUser(g, username);
+      if (r.error) return msg.reply(`❌ ${r.error}`);
+      return msg.reply(`👤 **${r.username}** (${r.displayName})\n📅 ${r.joined?.slice(0,10) || "?"}\n🎭 ${r.roles.join(", ") || "sin roles"}`);
+    }
+
+    // Estadísticas
+    if (/stats|estad[ií]sticas|miembros/i.test(txt) && !/info|datos|online/i.test(txt)) {
+      const r = await admin.getStats(g);
+      return msg.reply(`📊 **${g.name}**\n👥 Total: ${r.total}\n🧑 Humanos: ${r.humans}\n🤖 Bots: ${r.bots}\n🟢 Online: ${r.online}`);
+    }
+  } catch (e) {
+    msg.reply(`❌ Error: ${e.message}`);
+  }
 });
 
 // === INTERACCIONES ===
