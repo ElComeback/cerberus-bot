@@ -1,0 +1,6 @@
+{
+  "token": "TU_TOKEN_DE_DISCORD",
+  "clientId": "ID_DE_TU_BOT",
+  "guildId": "ID_DEL_SERVIDOR_PRINCIPAL",
+  "deepseekKey": "TU_API_KEY_DE_DEEPSEEK"
+}
