@@ -59,7 +59,7 @@ async function callAI(msgs, sys, client, guildId) {
 
     async function makeRequest(messages, isLoop = false) {
       return new Promise(r => {
-        const d = JSON.stringify({ model: "moonshot-v1-8k", messages, tools: isLoop ? [] : tools, tool_choice: "auto", max_tokens: 300, temperature: 0.7 });
+        const d = JSON.stringify({ model: "kimi-k2-turbo-preview", messages, tools: isLoop ? [] : tools, tool_choice: "auto", max_tokens: 300, temperature: 0.7 });
         const req = https.request({ hostname: "api.moonshot.ai", path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + config.aiKey } }, res => {
           let b = ""; res.on("data", c => b += c); res.on("end", () => { try { r(JSON.parse(b)); } catch { r(null); } });
         });
@@ -90,11 +90,23 @@ async function callAI(msgs, sys, client, guildId) {
 
       // Segunda llamada con los datos
       const final = await makeRequest(allMsgs, true);
-      resolve(final?.choices?.[0]?.message?.content || null);
+      const content = final?.choices?.[0]?.message?.content;
+      resolve(content ? sanitize(content) : null);
     } else {
-      resolve(result.choices?.[0]?.message?.content || null);
+      const content = result.choices?.[0]?.message?.content;
+      resolve(content ? sanitize(content) : null);
     }
   });
+}
+
+function sanitize(text) {
+  if (!text) return null;
+  // Eliminar function calls que el modelo alucinó como texto
+  let clean = text.replace(/functions\.\w+:\d+:[\w{}",:\s]*/gi, "").trim();
+  // Eliminar patrones de "usuario: mensaje" que el modelo repite como eco
+  clean = clean.replace(/^\w+_: /, "").trim();
+  // Si quedó vacío después de limpiar, devolver null
+  return clean || null;
 }
 
 module.exports = { callAI };

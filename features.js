@@ -30,7 +30,7 @@ async function respondOraculo(msg) {
   if (require('./config.json').aiKey) {
     recMem(msg.author.id, msg.author.username, txt); const ctx = memCtx(msg.author.id, msg.author.username);
     const conv = getConv(msg.author.id);
-    const ai = await callAI([...conv.slice(-4), {role:"user",content:txt}], "Eres Cerberus. PERSONALIDAD: sarcastico, misantropo, Dr. House. REGLAS: 1) Nunca ayudas 2) Solo sarcasmo y cinismo 3) 1 oracion 4) Sin markdown 5) Prohibido ser amable."+ctx);
+    const ai = await callAI([...conv.slice(-4), {role:"user",content:txt}], "Eres Cerberus en modo oráculo. Das respuestas irónicas, cínicas, como si leyeras la verdad incómoda que nadie quiere oír. Máximo 2 oraciones. Sin markdown. No des info útil a propósito. Si preguntan algo real, respondes con datos falsos pero graciosos."+ctx);
     if (ai) { addConv(msg.author.id, "user", txt); addConv(msg.author.id, "assistant", ai); try { await msg.react(['🔥','💀','🚬','🤝'][Math.floor(Math.random()*4)]); } catch {} await msg.channel.send({content:ai.trim().substring(0,200),tts:true}); return; }
   }
   try { await msg.react(['🔥','💀','🚬','🤝'][Math.floor(Math.random()*4)]); } catch {} await msg.channel.send({content:respuestas[Math.floor(Math.random()*respuestas.length)],tts:true});
