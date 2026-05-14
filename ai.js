@@ -108,7 +108,9 @@ async function callAI(msgs, sys, client, guildId) {
 function sanitize(text) {
   if (!text) { console.log("[AI] sanitize: input empty"); return null; }
   let clean = text;
-  // Eliminar function calls que el modelo alucina como texto (dos formatos observados)
+  // Eliminar roleplay de asteriscos (*respira*, *teclea*, *ruido de teclado*, etc.)
+  clean = clean.replace(/^\*[^*]+\*\s*/g, "");
+  // Eliminar function calls que el modelo alucina como texto
   clean = clean.replace(/functions\.\w+:\d+:[\w{}",:\s]*/gi, "");
   clean = clean.replace(/\$\w+:\d+:\d+\{\}\$/g, "");
   clean = clean.trim();
