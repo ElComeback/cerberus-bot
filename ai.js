@@ -54,21 +54,27 @@ const tools = Object.entries(functions).map(([name, fn]) => ({
 
 async function callAI(msgs, sys, client, guildId) {
   return new Promise(async (resolve) => {
-    if (!config.aiKey) return resolve(null);
+    if (!config.aiKey) { console.log("[AI] no aiKey"); return resolve(null); }
     const allMsgs = [{ role: "system", content: sys || "" }, ...msgs];
 
     async function makeRequest(messages, isLoop = false) {
       return new Promise(r => {
         const d = JSON.stringify({ model: "kimi-k2-turbo-preview", messages, tools: isLoop ? [] : tools, tool_choice: "auto", max_tokens: 300, temperature: 0.7 });
         const req = https.request({ hostname: "api.moonshot.ai", path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + config.aiKey } }, res => {
-          let b = ""; res.on("data", c => b += c); res.on("end", () => { try { r(JSON.parse(b)); } catch { r(null); } });
+          let b = ""; res.on("data", c => b += c); res.on("end", () => {
+            console.log("[AI] HTTP " + res.statusCode + " body=" + b.substring(0,200));
+            try { r(JSON.parse(b)); } catch(e) { console.log("[AI] JSON parse error: " + e.message); r(null); }
+          });
         });
-        req.on("error", () => r(null)); req.setTimeout(25000, () => { req.destroy(); r(null); }); req.write(d); req.end();
+        req.on("error", (e) => { console.log("[AI] req error: " + e.message); r(null); });
+        req.setTimeout(25000, () => { console.log("[AI] timeout"); req.destroy(); r(null); });
+        req.write(d); req.end();
       });
     }
 
     let result = await makeRequest(allMsgs);
-    if (!result) return resolve(null);
+    if (!result) { console.log("[AI] no result from first request"); return resolve(null); }
+    console.log("[AI] result has choices=" + !!result.choices + " tool_calls=" + !!(result.choices?.[0]?.message?.tool_calls));
 
     // Si la IA quiere llamar una función
     if (result.choices?.[0]?.message?.tool_calls) {
@@ -100,12 +106,13 @@ async function callAI(msgs, sys, client, guildId) {
 }
 
 function sanitize(text) {
-  if (!text) return null;
+  if (!text) { console.log("[AI] sanitize: input empty"); return null; }
   // Eliminar function calls que el modelo alucinó como texto
   let clean = text.replace(/functions\.\w+:\d+:[\w{}",:\s]*/gi, "").trim();
   // Eliminar patrones de "usuario: mensaje" que el modelo repite como eco
   clean = clean.replace(/^\w+_: /, "").trim();
   // Si quedó vacío después de limpiar, devolver null
+  if (!clean) { console.log("[AI] sanitize: became empty, was: " + text.substring(0,100)); }
   return clean || null;
 }
 
