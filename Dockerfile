@@ -1,6 +1,7 @@
 FROM node:22-alpine
 RUN apk add --no-cache ffmpeg python3 py3-pip && pip3 install --break-system-packages yt-dlp
 WORKDIR /app
+RUN mkdir -p /app/data
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY . .

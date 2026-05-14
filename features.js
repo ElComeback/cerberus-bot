@@ -69,27 +69,27 @@ async function handleArt(i) {
 
 // === WELCOME ===
 const welcomeConfig = new Map();
-function saveWel() { const d={}; for(const [k,v] of welcomeConfig) d[k]=v; fs.writeFile('./wel.json',JSON.stringify(d),()=>{}); }
-function loadWel() { try{const d=JSON.parse(fs.readFileSync('./wel.json','utf8'));for(const [k,v] of Object.entries(d)) welcomeConfig.set(k,v);console.log(`📂 ${Object.keys(d).length} bienvenidas`);}catch{} }
+function saveWel() { const d={}; for(const [k,v] of welcomeConfig) d[k]=v; fs.writeFile('./data/wel.json',JSON.stringify(d),()=>{}); }
+function loadWel() { try{const d=JSON.parse(fs.readFileSync('./data/wel.json','utf8'));for(const [k,v] of Object.entries(d)) welcomeConfig.set(k,v);console.log(`📂 ${Object.keys(d).length} bienvenidas`);}catch{} }
 
 // === ENCICLOPEDIA ===
 const encCfg = new Map();
-function saveEnc(){const d={};for(const [k,v] of encCfg)d[k]=v;fs.writeFile('./enc.json',JSON.stringify(d),()=>{});}
-function loadEnc(){try{const d=JSON.parse(fs.readFileSync('./enc.json','utf8'));for(const [k,v] of Object.entries(d)) encCfg.set(k,v);console.log(`📂 ${Object.keys(d).length} enciclopedias`);}catch{}}
+function saveEnc(){const d={};for(const [k,v] of encCfg)d[k]=v;fs.writeFile('./data/enc.json',JSON.stringify(d),()=>{});}
+function loadEnc(){try{const d=JSON.parse(fs.readFileSync('./data/enc.json','utf8'));for(const [k,v] of Object.entries(d)) encCfg.set(k,v);console.log(`📂 ${Object.keys(d).length} enciclopedias`);}catch{}}
 
 async function updateEnc(gid, client){const c=encCfg.get(gid);if(!c)return;const g=client.guilds.cache.get(gid);if(!g)return;const f=g.channels.cache.get(c.f);if(!f)return;try{const gen=g.channels.cache.find(x=>x.name.includes("general"));if(!gen)return;const msgs=await gen.messages.fetch({limit:100});const act={};msgs.forEach(m=>{if(m.author.bot)return;if(!act[m.author.id])act[m.author.id]={n:m.author.username,topics:[],c:0};act[m.author.id].c++;const t=m.content.toLowerCase();if(/dibuj|arte/.test(t))act[m.author.id].topics.push("arte");if(/jueg|game|helldivers/.test(t))act[m.author.id].topics.push("gaming");if(/musica|canción/.test(t))act[m.author.id].topics.push("música");if(/pelicula|serie|berserk/.test(t))act[m.author.id].topics.push("pelis");});const threads=await f.threads.fetchActive();for(const[,u]of Object.entries(act)){if(u.c<3)continue;const t=threads.threads.find(x=>x.name.includes(u.n));if(!t)continue;const s=t.starterMessage||await t.fetchStarterMessage();if(!s||s.author.id!==client.user.id)continue;const top=[...new Set(u.topics)].join(", ");const date=new Date().toLocaleDateString("es-MX",{day:"numeric",month:"short"});const line=`\n📊 **${date}:** ${u.c} msgs · ${top||"variado"}`;if(!s.content.includes(line.trim()))await s.edit(s.content+line);}}catch(e){console.error(e.message);}}
 function startEnc(gid,client){const c=encCfg.get(gid);if(!c)return;if(c.int)clearInterval(c.int);c.int=setInterval(()=>updateEnc(gid,client),3*24*60*60*1000);}
 
 const dealsConfig = new Map();
-function saveDeals() { const d={}; for(const [k,v] of dealsConfig) d[k]={ch:v.ch}; fs.writeFile("./deals.json",JSON.stringify(d),()=>{}); }
-function loadDeals() { try{const d=JSON.parse(fs.readFileSync("./deals.json","utf8"));for(const [k,v] of Object.entries(d)) dealsConfig.set(k,{ch:v.ch,int:null});console.log("📂 "+Object.keys(d).length+" deals");}catch{} }
+function saveDeals() { const d={}; for(const [k,v] of dealsConfig) d[k]={ch:v.ch}; fs.writeFile("./data/deals.json",JSON.stringify(d),()=>{}); }
+function loadDeals() { try{const d=JSON.parse(fs.readFileSync("./data/deals.json","utf8"));for(const [k,v] of Object.entries(d)) dealsConfig.set(k,{ch:v.ch,int:null});console.log("📂 "+Object.keys(d).length+" deals");}catch{} }
 function startDeals(gid,cid,cl) { stopDeals(gid); if(!dealsConfig.get(gid)) return; dealsConfig.get(gid).int=setInterval(async ()=>{const g=cl.guilds.cache.get(gid);const c=g?.channels?.cache?.get(cid);if(c){const d=await fetchDeals();sendDeals(c,d);}},8*60*60*1000); }
 function stopDeals(gid) { const c=dealsConfig.get(gid); if(c?.int){clearInterval(c.int);c.int=null;} }
 async function postDeals(gid,c,cl) { try{sendDeals(c,await fetchDeals());}catch{} }
 // === RITUALES SEMANALES ===
 const ritualCfg = new Map();
-function saveRitual() { const d={}; for(const [k,v] of ritualCfg) d[k]={ch:v.ch,last:v.last||{}}; fs.writeFile('./ritual.json',JSON.stringify(d),()=>{}); }
-function loadRitual() { try{const d=JSON.parse(fs.readFileSync('./ritual.json','utf8'));for(const [k,v] of Object.entries(d)) ritualCfg.set(k,{ch:v.ch,int:null,last:v.last||{}});console.log("📂 "+Object.keys(d).length+" rituales");}catch{} }
+function saveRitual() { const d={}; for(const [k,v] of ritualCfg) d[k]={ch:v.ch,last:v.last||{}}; fs.writeFile('./data/ritual.json',JSON.stringify(d),()=>{}); }
+function loadRitual() { try{const d=JSON.parse(fs.readFileSync('./data/ritual.json','utf8'));for(const [k,v] of Object.entries(d)) ritualCfg.set(k,{ch:v.ch,int:null,last:v.last||{}});console.log("📂 "+Object.keys(d).length+" rituales");}catch{} }
 
 const ritualDays = {
   1: { msg: "¿Qué hicieron este finde?", emoji: "☕" },    // Monday

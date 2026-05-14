@@ -1,7 +1,6 @@
 config.json
 node_modules/
 package-lock.json
-*.data.json
-memoria.json
+data/
 fly.toml
 .env

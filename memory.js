@@ -3,8 +3,8 @@ const fs = require('fs');
 const convBuf = new Map();
 let memDB = {};
 
-function loadMem() { try { memDB = JSON.parse(fs.readFileSync('./memoria.json', 'utf8')); } catch { memDB = {}; } }
-function saveMem() { fs.writeFile('./memoria.json', JSON.stringify(memDB, null, 2), () => {}); }
+function loadMem() { try { memDB = JSON.parse(fs.readFileSync('./data/memoria.json', 'utf8')); } catch { memDB = {}; } }
+function saveMem() { fs.writeFile('./data/memoria.json', JSON.stringify(memDB, null, 2), () => {}); }
 
 function recMem(id, name, txt) {
   if (!memDB[id]) memDB[id] = { name, topics: [], n: 0 };
