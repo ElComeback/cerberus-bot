@@ -107,8 +107,11 @@ async function callAI(msgs, sys, client, guildId) {
 
 function sanitize(text) {
   if (!text) { console.log("[AI] sanitize: input empty"); return null; }
-  // Eliminar function calls que el modelo alucinó como texto
-  let clean = text.replace(/functions\.\w+:\d+:[\w{}",:\s]*/gi, "").trim();
+  let clean = text;
+  // Eliminar function calls que el modelo alucina como texto (dos formatos observados)
+  clean = clean.replace(/functions\.\w+:\d+:[\w{}",:\s]*/gi, "");
+  clean = clean.replace(/\$\w+:\d+:\d+\{\}\$/g, "");
+  clean = clean.trim();
   // Eliminar patrones de "usuario: mensaje" que el modelo repite como eco
   clean = clean.replace(/^\w+_: /, "").trim();
   // Si quedó vacío después de limpiar, devolver null
