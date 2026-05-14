@@ -22,12 +22,6 @@ const channelMem = {};
 client.on('messageCreate', async msg => {
   if (msg.author.bot) return;
 
-  // DEBUG: loguear mensajes en canales con "general"
-  if (msg.channel.name.includes("general")) {
-    const hasMention = new RegExp("<@!?" + (client.user?.id || "").toString() + ">", "i").test(msg.content);
-    console.log(`[MSG] #${msg.channel.name} @${msg.author.username}: "${msg.content.substring(0,100)}" mention=${hasMention} len=${msg.content.trim().length} botReady=${!!client.user}`);
-  }
-
   // Oráculo
   const oid = oraculoConfig.get(msg.guild?.id);
   if (oid && msg.channel.id === oid) { await respondOraculo(msg); return; }
@@ -39,11 +33,11 @@ client.on('messageCreate', async msg => {
   // Participación orgánica en #general (sin @)
   if (client.user && msg.channel.name.includes("general")) {
     const txt = msg.content.trim();
-    if (!txt || txt.length < 5) { console.log(`[SKIP] msg too short: ${txt.length}`); return; }
+    if (!txt || txt.length < 5) return;
 
     // @mención explícita - responder siempre
     const isMention = new RegExp("<@!?" + client.user.id + ">", "i").test(msg.content);
-    if (isMention) console.log(`[MENTION] responding to ${msg.author.username}`);
+
 
     // Pregunta sin mención - 30% de probabilidad
     const isQuestion = /[¿?]|qué|como|cómo|quien|quién|donde|dónde|cuando|cuándo|por qué|porque|pq|xq|saben|alguien|opinan/i.test(txt);
@@ -101,10 +95,7 @@ ${channelCtx}`;
     const ai = await callAI([...conv.slice(-4), {role:"user",content:texto}], prompt, client, msg.guild.id);
     if (ai) {
       addConv(msg.author.id, "user", texto); addConv(msg.author.id, "assistant", ai);
-      console.log('[AI] reply to ' + msg.author.username + ': "' + ai.substring(0,80) + '"');
       await msg.reply(ai.trim().substring(0,300));
-    } else {
-      console.log('[AI] null response for ' + msg.author.username);
     }
     return;
   }
