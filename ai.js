@@ -59,7 +59,7 @@ async function callAI(msgs, sys, client, guildId) {
 
     async function makeRequest(messages, isLoop = false) {
       return new Promise(r => {
-        const d = JSON.stringify({ model: "deepseek-chat", messages, tools: isLoop ? [] : tools, tool_choice: "auto", max_tokens: 150, temperature: 0.7 });
+        const d = JSON.stringify({ model: "deepseek-v4", messages, tools: isLoop ? [] : tools, tool_choice: "auto", max_tokens: 150, temperature: 0.7 });
         const req = https.request({ hostname: "api.deepseek.com", path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + config.aiKey } }, res => {
           let b = ""; res.on("data", c => b += c); res.on("end", () => {
             console.log("[AI] HTTP " + res.statusCode + " body=" + b.substring(0,200));
